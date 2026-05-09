@@ -133,6 +133,54 @@ func TestNormalizeSetsDefaultWorkspaceFromWorkspaceList(t *testing.T) {
 	require.Equal(t, []string{"T123", "T456"}, cfg.WorkspaceIDs())
 }
 
+func TestAutoJoinResolvedDefaultsToTrue(t *testing.T) {
+	cfg := Default()
+	require.True(t, cfg.Sync.AutoJoinResolved(), "auto_join should default to true when nil")
+}
+
+func TestAutoJoinResolvedRespectsExplicitValue(t *testing.T) {
+	cfg := Default()
+
+	enabled := true
+	cfg.Sync.AutoJoin = &enabled
+	require.True(t, cfg.Sync.AutoJoinResolved())
+
+	disabled := false
+	cfg.Sync.AutoJoin = &disabled
+	require.False(t, cfg.Sync.AutoJoinResolved())
+}
+
+func TestSaveAndLoadRoundTripWithSyncFeatures(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+
+	cfg := Default()
+	cfg.WorkspaceID = "T123"
+	disabled := false
+	cfg.Sync.AutoJoin = &disabled
+	cfg.Sync.ExcludeChannels = []string{"general", "random"}
+	require.NoError(t, cfg.Save(path))
+
+	loaded, err := Load(path)
+	require.NoError(t, err)
+	require.False(t, loaded.Sync.AutoJoinResolved(), "auto_join=false should survive roundtrip")
+	require.Equal(t, []string{"general", "random"}, loaded.Sync.ExcludeChannels)
+}
+
+func TestSaveAndLoadRoundTripWithEmptyExcludeChannels(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+
+	cfg := Default()
+	cfg.WorkspaceID = "T123"
+	require.NoError(t, cfg.Save(path))
+
+	loaded, err := Load(path)
+	require.NoError(t, err)
+	require.True(t, loaded.Sync.AutoJoinResolved(), "auto_join should default to true")
+	require.Empty(t, loaded.Sync.ExcludeChannels, "exclude_channels should be empty by default")
+}
+
 func TestEnsureRuntimeDirsCreatesShareParent(t *testing.T) {
 	dir := t.TempDir()
 	cfg := Default()

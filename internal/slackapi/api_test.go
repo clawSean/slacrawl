@@ -966,6 +966,76 @@ func newExcludeChannelSlackServer(t *testing.T) *mockSlackServer {
 	return mock
 }
 
+func TestNormalizeChannelName(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"general", "general"},
+		{"#general", "general"},
+		{" General ", "general"},
+		{"#  OPS-Alerts ", "  ops-alerts"},
+		{"", ""},
+		{"  ", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			require.Equal(t, tt.want, normalizeChannelName(tt.input))
+		})
+	}
+}
+
+func TestFilterExcludedChannels(t *testing.T) {
+	channels := []slack.Channel{
+		{GroupConversation: slack.GroupConversation{Name: "ops-alerts", Conversation: slack.Conversation{ID: "C111"}}},
+		{GroupConversation: slack.GroupConversation{Name: "general", Conversation: slack.Conversation{ID: "C222"}}},
+		{GroupConversation: slack.GroupConversation{Name: "news", Conversation: slack.Conversation{ID: "C333"}}},
+	}
+
+	t.Run("excludes matching channels case-insensitively", func(t *testing.T) {
+		result := filterExcludedChannels(channels, []string{"#GENERAL", " ops-alerts "})
+		require.Len(t, result, 1)
+		require.Equal(t, "C333", result[0].ID)
+	})
+
+	t.Run("returns all channels when exclude list is empty", func(t *testing.T) {
+		result := filterExcludedChannels(channels, nil)
+		require.Len(t, result, 3)
+	})
+
+	t.Run("returns all channels when exclude list has no valid names", func(t *testing.T) {
+		result := filterExcludedChannels(channels, []string{"  ", "#"})
+		require.Len(t, result, 3)
+	})
+
+	t.Run("returns empty slice when all channels excluded", func(t *testing.T) {
+		result := filterExcludedChannels(channels, []string{"ops-alerts", "general", "news"})
+		require.Len(t, result, 0)
+	})
+
+	t.Run("handles empty channels input", func(t *testing.T) {
+		result := filterExcludedChannels(nil, []string{"general"})
+		require.Nil(t, result)
+	})
+}
+
+func TestSyncOptionsAutoJoinResolved(t *testing.T) {
+	t.Run("defaults to true when nil", func(t *testing.T) {
+		opts := SyncOptions{}
+		require.True(t, opts.AutoJoinResolved())
+	})
+
+	t.Run("returns true when explicitly set", func(t *testing.T) {
+		opts := SyncOptions{AutoJoin: testBoolPtr(true)}
+		require.True(t, opts.AutoJoinResolved())
+	})
+
+	t.Run("returns false when explicitly disabled", func(t *testing.T) {
+		opts := SyncOptions{AutoJoin: testBoolPtr(false)}
+		require.False(t, opts.AutoJoinResolved())
+	})
+}
+
 func testProgressLogger(out *bytes.Buffer) *slog.Logger {
 	return slog.New(slog.NewTextHandler(out, &slog.HandlerOptions{
 		ReplaceAttr: func(_ []string, attr slog.Attr) slog.Attr {
